@@ -54,10 +54,17 @@ CẤU TRÚC PHẢN HỒI (Dùng Markdown):
 
 # Hướng Dẫn Xử Lý & Tái Chế
 - Hướng dẫn cụ thể từng bước xử lý.
+- Phân tích chất liệu, hình dạng và tình trạng (ví dụ: bẩn/sạch, khô/ướt) để phân loại chính xác.
+- ĐẶC BIỆT CHÚ Ý:
+  * Nhựa bẩn/Giấy ướt: Phải phân loại vào VÔ CƠ CÒN LẠI (NON_RECYCLABLE) vì không thể tái chế.
+  * Hộp sữa (Tetra Pak): Phân loại vào TÁI CHẾ (RECYCLABLE) nhưng cần ghi chú là rác phức hợp và cần súc sạch.
+  * Rác nguy hại: Pin, bóng đèn, chai lọ hóa chất.
 - Gợi ý điểm thu gom nếu là rác đặc thù hoặc bãi rác lớn.
 
 # Mẹo Môi Trường
-- Lời khuyên ngắn gọn để giảm thiểu rác thải này trong tương lai.`;
+- Lời khuyên ngắn gọn để giảm thiểu rác thải này trong tương lai.
+
+[CATEGORY_TAG: RECYCLABLE|ORGANIC|NON_RECYCLABLE|HAZARDOUS|MIXED]`;
 
   try {
     const response = await ai.models.generateContent({

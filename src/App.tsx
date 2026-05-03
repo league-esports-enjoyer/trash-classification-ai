@@ -21,10 +21,25 @@ interface WasteAnalysis {
   image: string;
   processedImage: string | null;
   result: string | null;
+  category: string | null;
+  groundTruth: string | null;
   isAnalyzing: boolean;
   isPreprocessing: boolean;
   error: string | null;
 }
+
+const WASTE_CATEGORIES = [
+  { id: 'RECYCLABLE', vi: 'Tái chế', en: 'Recyclable', color: 'bg-green-500' },
+  { id: 'ORGANIC', vi: 'Hữu cơ', en: 'Organic', color: 'bg-orange-500' },
+  { id: 'NON_RECYCLABLE', vi: 'Vô cơ còn lại', en: 'Non-recyclable', color: 'bg-gray-500' },
+  { id: 'HAZARDOUS', vi: 'Nguy hại', en: 'Hazardous', color: 'bg-red-500' },
+  { id: 'MIXED', vi: 'Hỗn hợp', en: 'Mixed', color: 'bg-amber-500' },
+];
+
+const extractCategory = (markdown: string): string | null => {
+  const match = markdown.match(/\[CATEGORY_TAG:\s*(RECYCLABLE|ORGANIC|NON_RECYCLABLE|HAZARDOUS|MIXED)\]/);
+  return match ? match[1] : null;
+};
 
 const ProgressBar = ({ className, color = "bg-white" }: { className?: string; color?: string }) => (
   <div className={cn("relative w-full h-1 overflow-hidden rounded-full bg-black/10", className)}>
@@ -46,10 +61,17 @@ export default function App() {
   const [lang, setLang] = useState<'vi' | 'en'>('vi');
   const [analyses, setAnalyses] = useState<WasteAnalysis[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [trainingConfig, setTrainingConfig] = useState({
+    learningRate: 0.001,
+    epochs: 10,
+    augmentation: true,
+    dataSize: 5000
+  });
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isJumping, setIsJumping] = useState(false);
   const [jumpPage, setJumpPage] = useState("");
+  const [isTraining, setIsTraining] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -67,6 +89,8 @@ export default function App() {
         image: img,
         processedImage: null,
         result: null,
+        category: null,
+        groundTruth: null,
         isAnalyzing: false,
         isPreprocessing: true,
         error: null
@@ -160,7 +184,13 @@ export default function App() {
       const imageToAnalyze = item.processedImage || item.image;
       const mimeType = imageToAnalyze.split(';')[0].split(':')[1];
       const analysis = await analyzeWaste(imageToAnalyze, mimeType, lang);
-      setAnalyses(prev => prev.map((a, i) => i === index ? { ...a, result: analysis || (lang === 'en' ? "Unable to analyze data." : "Không thể phân tích dữ liệu."), isAnalyzing: false } : a));
+      const category = extractCategory(analysis);
+      setAnalyses(prev => prev.map((a, i) => i === index ? { 
+        ...a, 
+        result: analysis || (lang === 'en' ? "Unable to analyze data." : "Không thể phân tích dữ liệu."), 
+        category: category,
+        isAnalyzing: false 
+      } : a));
     } catch (err: any) {
       console.error("Analysis error:", err);
       let errorMsg = t.errorDefault;
@@ -240,6 +270,10 @@ export default function App() {
     setActiveIndex(-1);
   };
 
+  const setGroundTruth = (index: number, category: string | null) => {
+    setAnalyses(prev => prev.map((a, i) => i === index ? { ...a, groundTruth: category } : a));
+  };
+
   const activeItem = activeIndex !== -1 ? analyses[activeIndex] : null;
 
   const t = {
@@ -290,7 +324,25 @@ export default function App() {
       evalMetricsTitle: "Đánh giá",
       evalMetricsDesc: "Độ chính xác AI",
       evalCritiqueTitle: "Phản biện",
-      evalCritiqueDesc: "Tối ưu & Khắc phục"
+      evalCritiqueDesc: "Tối ưu & Khắc phục",
+      verifyPrompt: "Xác minh kết quả của AI:",
+      correct: "Đúng",
+      incorrect: "Sai",
+      metricsDashboard: "Bảng Chỉ số Hiệu năng (Real-time Metrics)",
+      accuracy: "Độ chính xác (Accuracy)",
+      precision: "Độ chính xác (Precision)",
+      recall: "Độ phủ (Recall)",
+      totalVerified: "Tổng số verified",
+      categoryHeader: "Hạng mục",
+      groundTruthPrompt: "Hãy chọn phân loại đúng:",
+      modelOptTitle: "Tối ưu hóa Mô hình (Optimization)",
+      learningRate: "Learning Rate",
+      epochs: "Số Epochs",
+      augmentation: "Data Augmentation",
+      dataSize: "Quy mô dữ liệu",
+      retrain: "Tái huấn luyện",
+      trainingStatus: "Đang cập nhật trọng số...",
+      ambiguousInfo: "Xử lý rác dễ nhầm (nhựa bẩn, giấy ướt, hộp sữa...)"
     },
     en: {
       title: "EcoSort AI",
@@ -339,7 +391,25 @@ export default function App() {
       evalMetricsTitle: "Evaluation",
       evalMetricsDesc: "System accuracy",
       evalCritiqueTitle: "Critique",
-      evalCritiqueDesc: "Optimization loop"
+      evalCritiqueDesc: "Optimization loop",
+      verifyPrompt: "Verify AI classification:",
+      correct: "Correct",
+      incorrect: "Incorrect",
+      metricsDashboard: "Real-time Metrics Dashboard",
+      accuracy: "Overall Accuracy",
+      precision: "Precision",
+      recall: "Recall",
+      totalVerified: "Total Verified",
+      categoryHeader: "Category",
+      groundTruthPrompt: "Select correct category:",
+      modelOptTitle: "Model Optimization",
+      learningRate: "Learning Rate",
+      epochs: "Epochs",
+      augmentation: "Data Augmentation",
+      dataSize: "Dataset Size",
+      retrain: "Apply Optimization",
+      trainingStatus: "Updating weights...",
+      ambiguousInfo: "Handling ambiguous waste (dirty plastic, wet paper...)"
     }
   }[lang];
 
@@ -780,6 +850,69 @@ export default function App() {
                     >
                       {activeItem.result!}
                     </ReactMarkdown>
+
+                    {/* Verification Section */}
+                    {activeItem.category && (
+                      <div className="mt-12 pt-8 border-t border-natural-border">
+                        <div className="flex flex-col gap-4">
+                          <h4 className="text-[11px] font-bold text-natural-muted uppercase tracking-[0.2em]">{t.verifyPrompt}</h4>
+                          <div className="flex flex-wrap gap-2">
+                            <Button 
+                              size="sm"
+                              variant={activeItem.groundTruth === activeItem.category ? "default" : "outline"}
+                              className={cn(
+                                "rounded-xl px-4 h-9 flex items-center gap-2 font-bold text-[11px] uppercase tracking-wider",
+                                activeItem.groundTruth === activeItem.category ? "bg-green-600 hover:bg-green-700 text-white" : "border-green-100 hover:bg-green-50 text-green-700"
+                              )}
+                              onClick={() => setGroundTruth(activeIndex, activeItem.category)}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              {t.correct}
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant={activeItem.groundTruth && activeItem.groundTruth !== activeItem.category ? "default" : "outline"}
+                              className={cn(
+                                "rounded-xl px-4 h-9 flex items-center gap-2 font-bold text-[11px] uppercase tracking-wider transition-all",
+                                activeItem.groundTruth && activeItem.groundTruth !== activeItem.category ? "bg-red-500 hover:bg-red-600 text-white" : "border-red-100 hover:bg-red-50 text-red-600"
+                              )}
+                              onClick={() => {
+                                // Just a toggle to show options or reset
+                                if (activeItem.groundTruth && activeItem.groundTruth !== activeItem.category) {
+                                  setGroundTruth(activeIndex, null);
+                                }
+                              }}
+                            >
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              {t.incorrect}
+                            </Button>
+                          </div>
+
+                          {(activeItem.groundTruth === null || activeItem.groundTruth !== activeItem.category) && (
+                            <div className="space-y-3 bg-natural-bg/50 p-4 rounded-2xl border border-natural-border/50">
+                              <p className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.groundTruthPrompt}</p>
+                              <div className="flex flex-wrap gap-2">
+                                {WASTE_CATEGORIES.map(cat => (
+                                  <Button
+                                    key={cat.id}
+                                    size="sm"
+                                    variant={activeItem.groundTruth === cat.id ? "secondary" : "ghost"}
+                                    className={cn(
+                                      "h-8 px-3 text-[10px] uppercase font-bold rounded-lg border",
+                                      activeItem.groundTruth === cat.id ? "bg-natural-primary text-white border-natural-primary" : "border-transparent hover:border-natural-border"
+                                    )}
+                                    onClick={() => setGroundTruth(activeIndex, cat.id)}
+                                  >
+                                    {lang === 'vi' ? cat.vi : cat.en}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </article>
                 </ScrollArea>
                 <div className="p-6 bg-natural-bg border-t border-natural-border flex items-center justify-between">
@@ -834,6 +967,61 @@ export default function App() {
             )}
           </AnimatePresence>
 
+          {/* Model Optimization Dashboard */}
+          <div className="mt-8 mb-4">
+            <div className="flex items-center gap-2 mb-4 px-2">
+              <RefreshCcw className="w-4 h-4 text-natural-muted" />
+              <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-natural-muted/70">{t.modelOptTitle}</h2>
+            </div>
+            <div className="bg-white border border-natural-border p-6 rounded-[24px] shadow-sm flex flex-col lg:flex-row gap-8 items-start">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 flex-1 w-full">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.learningRate}</label>
+                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
+                    {trainingConfig.learningRate}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.epochs}</label>
+                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
+                    {trainingConfig.epochs}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.dataSize}</label>
+                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
+                    {trainingConfig.dataSize.toLocaleString()}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.augmentation}</label>
+                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
+                    {trainingConfig.augmentation ? "Enabled" : "Disabled"}
+                  </div>
+                </div>
+              </div>
+              <div className="w-full lg:w-48 space-y-4">
+                <Button 
+                  className="w-full h-12 rounded-xl bg-natural-primary hover:bg-natural-primary/90 text-white font-bold uppercase tracking-widest text-[11px]"
+                  disabled={isTraining}
+                  onClick={() => {
+                    // Simulate training
+                    setIsTraining(true);
+                    setTimeout(() => setIsTraining(false), 2000);
+                  }}
+                >
+                  {isTraining ? t.trainingStatus : t.retrain}
+                </Button>
+                <div className="p-3 bg-natural-sage/10 border border-natural-sage/20 rounded-xl">
+                  <p className="text-[9px] text-natural-primary/80 leading-relaxed italic font-medium">
+                    <Info className="w-3 h-3 inline mr-1 mb-0.5" />
+                    {t.ambiguousInfo}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Technical Workflow Section */}
           <div className="mt-12 mb-4">
             <div className="flex items-center gap-2 mb-4 px-2">
@@ -856,27 +1044,105 @@ export default function App() {
             </div>
           </div>
 
-          {/* Deployment & Evaluation Section */}
+          {/* Deployment & Evaluation Section / Metrics Dashboard */}
           <div className="mt-8 mb-12">
-            <div className="flex items-center gap-2 mb-4 px-2">
-              <AlertCircle className="w-4 h-4 text-natural-muted" />
-              <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-natural-muted/70">{t.evaluationTitle}</h2>
+            <div className="flex items-center justify-between mb-4 px-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-natural-muted" />
+                <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-natural-muted/70">
+                  {analyses.some(a => a.groundTruth) ? t.metricsDashboard : t.evaluationTitle}
+                </h2>
+              </div>
+              {analyses.some(a => a.groundTruth) && (
+                <div className="flex items-center gap-4 text-[10px] font-bold text-natural-muted uppercase tracking-widest">
+                  <span>{t.totalVerified}: {analyses.filter(a => a.groundTruth).length}</span>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-2">
-              {[
-                { title: t.evalTestTitle, desc: t.evalTestDesc, icon: "🧪", color: "border-blue-100 bg-blue-50/30" },
-                { title: t.evalMetricsTitle, desc: t.evalMetricsDesc, icon: "📊", color: "border-green-100 bg-green-50/30" },
-                { title: t.evalCritiqueTitle, desc: t.evalCritiqueDesc, icon: "💬", color: "border-orange-100 bg-orange-50/30" }
-              ].map((step, i) => (
-                <div key={i} className={cn("backdrop-blur-sm border p-4 rounded-2xl flex items-center gap-4 transition-all hover:scale-[1.02]", step.color)}>
-                  <span className="text-2xl">{step.icon}</span>
-                  <div>
-                    <h3 className="text-xs font-bold text-natural-primary uppercase tracking-tight">{step.title}</h3>
-                    <p className="text-[10px] text-natural-muted leading-tight mt-0.5">{step.desc}</p>
+
+            {analyses.some(a => a.groundTruth) ? (
+              <div className="space-y-4 px-2">
+                {/* Overall Accuracy Card */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="col-span-1 md:col-span-1 bg-white border border-natural-border rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+                    <span className="text-[10px] font-bold text-natural-muted uppercase tracking-[0.1em]">{t.accuracy}</span>
+                    <div className="mt-4 flex items-baseline gap-2">
+                      <span className="text-4xl font-black text-natural-primary">
+                        {(analyses.filter(a => a.category && a.groundTruth).length > 0
+                          ? (analyses.filter(a => a.category === a.groundTruth).length / analyses.filter(a => a.category && a.groundTruth).length * 100).toFixed(1)
+                          : "0.0")}%
+                      </span>
+                    </div>
+                    <div className="mt-4 w-full bg-natural-bg h-1.5 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(analyses.filter(a => a.category && a.groundTruth).length > 0 ? (analyses.filter(a => a.category === a.groundTruth).length / analyses.filter(a => a.category && a.groundTruth).length * 100) : 0)}%` }}
+                        className="h-full bg-natural-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="col-span-1 md:col-span-3 bg-white border border-natural-border rounded-2xl p-6 shadow-sm overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-natural-border/50 text-[10px] font-bold text-natural-muted uppercase tracking-widest">
+                          <th className="pb-3 font-bold">{t.categoryHeader}</th>
+                          <th className="pb-3 text-center">{t.precision}</th>
+                          <th className="pb-3 text-center">{t.recall}</th>
+                          <th className="pb-3 text-right">TP/N</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-xs">
+                        {WASTE_CATEGORIES.map(cat => {
+                          const verified = analyses.filter(a => a.category && a.groundTruth);
+                          const tp = verified.filter(a => a.category === cat.id && a.groundTruth === cat.id).length;
+                          const fp = verified.filter(a => a.category === cat.id && a.groundTruth !== cat.id).length;
+                          const fn = verified.filter(a => a.category !== cat.id && a.groundTruth === cat.id).length;
+                          const n = verified.filter(a => a.groundTruth === cat.id).length;
+                          
+                          const precision = tp + fp > 0 ? (tp / (tp + fp) * 100).toFixed(0) : "0";
+                          const recall = tp + fn > 0 ? (tp / (tp + fn) * 100).toFixed(0) : "0";
+
+                          return (
+                            <tr key={cat.id} className="border-b border-natural-border/20 last:border-0">
+                              <td className="py-3 flex items-center gap-2">
+                                <div className={cn("w-2 h-2 rounded-full", cat.color)} />
+                                <span className="font-bold text-natural-primary">{lang === 'vi' ? cat.vi : cat.en}</span>
+                              </td>
+                              <td className="py-3 text-center">
+                                <span className={cn("font-mono font-bold", parseInt(precision) > 85 ? "text-green-600" : "text-natural-muted")}>{precision}%</span>
+                              </td>
+                              <td className="py-3 text-center">
+                                <span className={cn("font-mono font-bold", parseInt(recall) > 85 ? "text-green-600" : "text-natural-muted")}>{recall}%</span>
+                              </td>
+                              <td className="py-3 text-right font-mono text-natural-muted tabular-nums">
+                                {tp}/{n}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-2">
+                {[
+                  { title: t.evalTestTitle, desc: t.evalTestDesc, icon: "🧪", color: "border-blue-100 bg-blue-50/30" },
+                  { title: t.evalMetricsTitle, desc: t.evalMetricsDesc, icon: "📊", color: "border-green-100 bg-green-50/30" },
+                  { title: t.evalCritiqueTitle, desc: t.evalCritiqueDesc, icon: "💬", color: "border-orange-100 bg-orange-50/30" }
+                ].map((step, i) => (
+                  <div key={i} className={cn("backdrop-blur-sm border p-4 rounded-2xl flex items-center gap-4 transition-all hover:scale-[1.02]", step.color)}>
+                    <span className="text-2xl">{step.icon}</span>
+                    <div>
+                      <h3 className="text-xs font-bold text-natural-primary uppercase tracking-tight">{step.title}</h3>
+                      <p className="text-[10px] text-natural-muted leading-tight mt-0.5">{step.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </main>
