@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, Upload, Trash2, Leaf, Recycle, Info, Loader2, RefreshCcw, ChevronRight, ChevronLeft, AlertCircle, Plus, Image as ImageIcon, Download, Check } from 'lucide-react';
+import { Camera, Upload, Trash2, Leaf, Recycle, Info, Loader2, RefreshCcw, ChevronRight, ChevronLeft, AlertCircle, Plus, Image as ImageIcon, Download, Check, Settings, X, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ interface WasteAnalysis {
   result: string | null;
   category: string | null;
   groundTruth: string | null;
+  feedback?: string | null;
   isAnalyzing: boolean;
   isPreprocessing: boolean;
   error: string | null;
@@ -72,6 +73,7 @@ export default function App() {
   const [isJumping, setIsJumping] = useState(false);
   const [jumpPage, setJumpPage] = useState("");
   const [isTraining, setIsTraining] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -274,7 +276,22 @@ export default function App() {
     setAnalyses(prev => prev.map((a, i) => i === index ? { ...a, groundTruth: category } : a));
   };
 
+  const setFeedback = (index: number, feedback: string) => {
+    setAnalyses(prev => prev.map((a, i) => i === index ? { ...a, feedback } : a));
+  };
+
   const activeItem = activeIndex !== -1 ? analyses[activeIndex] : null;
+
+  const getDisplayResult = (result: string | null, language: 'vi' | 'en') => {
+    if (!result) return "";
+    const parts = result.split("---ENGLISH_SECTION---");
+    if (parts.length < 2) return result; // Fallback if separator not found
+    
+    let content = language === 'vi' ? parts[0] : parts[1];
+    // Strip tags if they are leaked into the content
+    content = content.replace(/\[CATEGORY_TAG:.*?\]/g, "").trim();
+    return content;
+  };
 
   const t = {
     vi: {
@@ -342,7 +359,10 @@ export default function App() {
       dataSize: "Quy mô dữ liệu",
       retrain: "Tái huấn luyện",
       trainingStatus: "Đang cập nhật trọng số...",
-      ambiguousInfo: "Xử lý rác dễ nhầm (nhựa bẩn, giấy ướt, hộp sữa...)"
+      ambiguousInfo: "Xử lý rác dễ nhầm (nhựa bẩn, giấy ướt, hộp sữa...)",
+      rebuttalPrompt: "Nhập lý do phản biện của bạn:",
+      rebuttalPlaceholder: "Ví dụ: Đây thực tế là nhựa PET bẩn nên không thể tái chế...",
+      saveFeedback: "Lưu phản hồi"
     },
     en: {
       title: "EcoSort AI",
@@ -409,7 +429,10 @@ export default function App() {
       dataSize: "Dataset Size",
       retrain: "Apply Optimization",
       trainingStatus: "Updating weights...",
-      ambiguousInfo: "Handling ambiguous waste (dirty plastic, wet paper...)"
+      ambiguousInfo: "Handling ambiguous waste (dirty plastic, wet paper...)",
+      rebuttalPrompt: "Internal Critique / Rebuttal:",
+      rebuttalPlaceholder: "e.g. This plastic is heavily soiled and should be non-recyclable...",
+      saveFeedback: "Save Feedback"
     }
   }[lang];
 
@@ -428,6 +451,14 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="icon"
+              className="rounded-xl border-natural-border hover:bg-natural-bg"
+              onClick={() => setIsSettingsOpen(true)}
+            >
+              <Settings className="w-5 h-5 text-natural-muted" />
+            </Button>
             <div className="flex bg-natural-bg rounded-lg p-1 border border-natural-border">
               <button 
                 onClick={() => setLang('vi')}
@@ -848,7 +879,7 @@ export default function App() {
                         strong: ({node, ...props}) => <strong className="font-bold text-natural-primary block mb-1" {...props} />,
                       }}
                     >
-                      {activeItem.result!}
+                      {getDisplayResult(activeItem.result, lang)}
                     </ReactMarkdown>
 
                     {/* Verification Section */}
@@ -890,24 +921,42 @@ export default function App() {
                           </div>
 
                           {(activeItem.groundTruth === null || activeItem.groundTruth !== activeItem.category) && (
-                            <div className="space-y-3 bg-natural-bg/50 p-4 rounded-2xl border border-natural-border/50">
-                              <p className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.groundTruthPrompt}</p>
-                              <div className="flex flex-wrap gap-2">
-                                {WASTE_CATEGORIES.map(cat => (
-                                  <Button
-                                    key={cat.id}
-                                    size="sm"
-                                    variant={activeItem.groundTruth === cat.id ? "secondary" : "ghost"}
-                                    className={cn(
-                                      "h-8 px-3 text-[10px] uppercase font-bold rounded-lg border",
-                                      activeItem.groundTruth === cat.id ? "bg-natural-primary text-white border-natural-primary" : "border-transparent hover:border-natural-border"
-                                    )}
-                                    onClick={() => setGroundTruth(activeIndex, cat.id)}
-                                  >
-                                    {lang === 'vi' ? cat.vi : cat.en}
-                                  </Button>
-                                ))}
+                            <div className="space-y-4 bg-natural-bg/50 p-4 rounded-2xl border border-natural-border/50">
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.groundTruthPrompt}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {WASTE_CATEGORIES.map(cat => (
+                                    <Button
+                                      key={cat.id}
+                                      size="sm"
+                                      variant={activeItem.groundTruth === cat.id ? "secondary" : "ghost"}
+                                      className={cn(
+                                        "h-8 px-3 text-[10px] uppercase font-bold rounded-lg border",
+                                        activeItem.groundTruth === cat.id ? "bg-natural-primary text-white border-natural-primary" : "border-transparent hover:border-natural-border"
+                                      )}
+                                      onClick={() => setGroundTruth(activeIndex, cat.id)}
+                                    >
+                                      {lang === 'vi' ? cat.vi : cat.en}
+                                    </Button>
+                                  ))}
+                                </div>
                               </div>
+
+                              {activeItem.groundTruth && (
+                                <motion.div 
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  className="space-y-2"
+                                >
+                                  <p className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.rebuttalPrompt}</p>
+                                  <textarea
+                                    value={activeItem.feedback || ""}
+                                    onChange={(e) => setFeedback(activeIndex, e.target.value)}
+                                    placeholder={t.rebuttalPlaceholder}
+                                    className="w-full min-h-[80px] p-3 text-sm bg-white border border-natural-border rounded-xl focus:outline-none focus:ring-2 focus:ring-natural-primary/20 transition-all resize-none"
+                                  />
+                                </motion.div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -966,61 +1015,6 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Model Optimization Dashboard */}
-          <div className="mt-8 mb-4">
-            <div className="flex items-center gap-2 mb-4 px-2">
-              <RefreshCcw className="w-4 h-4 text-natural-muted" />
-              <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-natural-muted/70">{t.modelOptTitle}</h2>
-            </div>
-            <div className="bg-white border border-natural-border p-6 rounded-[24px] shadow-sm flex flex-col lg:flex-row gap-8 items-start">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 flex-1 w-full">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.learningRate}</label>
-                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
-                    {trainingConfig.learningRate}
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.epochs}</label>
-                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
-                    {trainingConfig.epochs}
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.dataSize}</label>
-                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
-                    {trainingConfig.dataSize.toLocaleString()}
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.augmentation}</label>
-                  <div className="text-sm font-mono text-natural-primary bg-natural-bg p-2 rounded-lg border border-natural-border/30">
-                    {trainingConfig.augmentation ? "Enabled" : "Disabled"}
-                  </div>
-                </div>
-              </div>
-              <div className="w-full lg:w-48 space-y-4">
-                <Button 
-                  className="w-full h-12 rounded-xl bg-natural-primary hover:bg-natural-primary/90 text-white font-bold uppercase tracking-widest text-[11px]"
-                  disabled={isTraining}
-                  onClick={() => {
-                    // Simulate training
-                    setIsTraining(true);
-                    setTimeout(() => setIsTraining(false), 2000);
-                  }}
-                >
-                  {isTraining ? t.trainingStatus : t.retrain}
-                </Button>
-                <div className="p-3 bg-natural-sage/10 border border-natural-sage/20 rounded-xl">
-                  <p className="text-[9px] text-natural-primary/80 leading-relaxed italic font-medium">
-                    <Info className="w-3 h-3 inline mr-1 mb-0.5" />
-                    {t.ambiguousInfo}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Technical Workflow Section */}
           <div className="mt-12 mb-4">
@@ -1165,6 +1159,175 @@ export default function App() {
 
       {/* Hidden canvas for photo capture */}
       <canvas ref={canvasRef} className="hidden" />
+
+      {/* Settings Overlay */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSettingsOpen(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60]"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 w-full max-w-sm bg-white shadow-2xl z-[70] flex flex-col"
+            >
+              <div className="p-6 border-b border-natural-border flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-natural-bg rounded-xl">
+                    <Settings className="w-5 h-5 text-natural-primary" />
+                  </div>
+                  <h2 className="text-sm font-bold uppercase tracking-widest text-natural-primary">{t.modelOptTitle}</h2>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="rounded-full hover:bg-natural-bg" 
+                  onClick={() => setIsSettingsOpen(false)}
+                >
+                  <X className="w-5 h-5 text-natural-muted" />
+                </Button>
+              </div>
+
+              <ScrollArea className="flex-1 p-6">
+                <div className="space-y-8">
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.learningRate}</label>
+                        <input 
+                          type="number"
+                          step="0.0001"
+                          min="0.0001"
+                          max="0.01"
+                          value={trainingConfig.learningRate}
+                          onChange={(e) => setTrainingConfig(prev => ({ ...prev, learningRate: parseFloat(e.target.value) || 0 }))}
+                          className="w-20 text-[10px] font-mono font-bold text-natural-primary bg-natural-bg px-2 py-0.5 rounded border border-natural-border/30 focus:outline-none focus:border-natural-primary text-right"
+                        />
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.0001" 
+                        max="0.01" 
+                        step="0.0001"
+                        value={trainingConfig.learningRate}
+                        onChange={(e) => setTrainingConfig(prev => ({ ...prev, learningRate: parseFloat(e.target.value) }))}
+                        className="w-full accent-natural-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.epochs}</label>
+                        <input 
+                          type="number"
+                          step="1"
+                          min="1"
+                          max="1000"
+                          value={trainingConfig.epochs}
+                          onChange={(e) => setTrainingConfig(prev => ({ ...prev, epochs: parseInt(e.target.value) || 0 }))}
+                          className="w-16 text-[10px] font-mono font-bold text-natural-primary bg-natural-bg px-2 py-0.5 rounded border border-natural-border/30 focus:outline-none focus:border-natural-primary text-right"
+                        />
+                      </div>
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="100" 
+                        step="1"
+                        value={trainingConfig.epochs}
+                        onChange={(e) => setTrainingConfig(prev => ({ ...prev, epochs: parseInt(e.target.value) }))}
+                        className="w-full accent-natural-primary"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.dataSize}</label>
+                        <input 
+                          type="number"
+                          step="100"
+                          min="0"
+                          max="100000"
+                          value={trainingConfig.dataSize}
+                          onChange={(e) => setTrainingConfig(prev => ({ ...prev, dataSize: parseInt(e.target.value) || 0 }))}
+                          className="w-24 text-[10px] font-mono font-bold text-natural-primary bg-natural-bg px-2 py-0.5 rounded border border-natural-border/30 focus:outline-none focus:border-natural-primary text-right"
+                        />
+                      </div>
+                      <input 
+                        type="range" 
+                        min="100" 
+                        max="10000" 
+                        step="100"
+                        value={trainingConfig.dataSize}
+                        onChange={(e) => setTrainingConfig(prev => ({ ...prev, dataSize: parseInt(e.target.value) }))}
+                        className="w-full accent-natural-primary"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-4 bg-natural-bg/50 rounded-2xl border border-natural-border/30">
+                      <div className="space-y-0.5">
+                        <label className="text-[10px] font-bold text-natural-primary uppercase tracking-wider">{t.augmentation}</label>
+                        <p className="text-[9px] text-natural-muted leading-tight">Apply image transforms</p>
+                      </div>
+                      <button 
+                        onClick={() => setTrainingConfig(prev => ({ ...prev, augmentation: !prev.augmentation }))}
+                        className={cn(
+                          "w-10 h-5 rounded-full transition-colors relative flex items-center px-1",
+                          trainingConfig.augmentation ? "bg-natural-primary" : "bg-natural-muted/30"
+                        )}
+                      >
+                        <motion.div 
+                          animate={{ x: trainingConfig.augmentation ? 20 : 0 }}
+                          className="w-3 h-3 bg-white rounded-full shadow-sm"
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-natural-sage/10 border border-natural-sage/20 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Info className="w-3.5 h-3.5 text-natural-primary/70" />
+                      <p className="text-[10px] font-bold text-natural-primary/70 uppercase tracking-tight">AI Note</p>
+                    </div>
+                    <p className="text-[10px] text-natural-primary/80 leading-relaxed italic">
+                      {t.ambiguousInfo}
+                    </p>
+                  </div>
+
+                  <Button 
+                    className="w-full h-14 rounded-2xl bg-natural-primary hover:bg-natural-primary/90 text-white font-bold uppercase tracking-[0.2em] text-[11px] shadow-lg shadow-natural-primary/20 transition-all active:scale-95 disabled:opacity-50"
+                    disabled={isTraining}
+                    onClick={() => {
+                      setIsTraining(true);
+                      setTimeout(() => {
+                        setIsTraining(false);
+                        setIsSettingsOpen(false);
+                      }, 2000);
+                    }}
+                  >
+                    {isTraining ? t.trainingStatus : t.retrain}
+                  </Button>
+                </div>
+              </ScrollArea>
+              
+              <div className="p-6 border-t border-natural-border bg-natural-bg/30">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-4 h-4 text-natural-sage" />
+                  <p className="text-[9px] text-natural-muted leading-tight font-medium">
+                    Parameters are applied to the local model instance for real-time inference optimization.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
