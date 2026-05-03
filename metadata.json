@@ -1,0 +1,8 @@
+{
+  "name": "EcoSort AI",
+  "description": "Chuyên gia phân loại rác thải thông minh và tư vấn tái chế bảo vệ môi trường.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
