@@ -29,6 +29,7 @@ interface WasteAnalysis {
   isAnalyzing: boolean;
   isPreprocessing: boolean;
   error: string | null;
+  isIncorrectReported?: boolean;
 }
 
 const WASTE_CATEGORIES = [
@@ -124,10 +125,11 @@ export default function App() {
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
+  const processFiles = (files: FileList | null) => {
     if (files && files.length > 0) {
-      const fileList = Array.from(files);
+      const fileList = Array.from(files).filter(file => file.type.startsWith('image/'));
+      if (fileList.length === 0) return;
+      
       const readPromises = fileList.map(file => {
         return new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -140,8 +142,36 @@ export default function App() {
         addImages(images);
       });
     }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    processFiles(event.target.files);
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files) {
+      processFiles(e.dataTransfer.files);
+    }
   };
 
   const startCamera = async () => {
@@ -281,7 +311,19 @@ export default function App() {
   };
 
   const setGroundTruth = (index: number, category: string | null) => {
-    setAnalyses(prev => prev.map((a, i) => i === index ? { ...a, groundTruth: category } : a));
+    setAnalyses(prev => prev.map((a, i) => i === index ? { 
+      ...a, 
+      groundTruth: category,
+      isIncorrectReported: category !== null && category !== a.category
+    } : a));
+  };
+
+  const toggleIncorrectReported = (index: number) => {
+    setAnalyses(prev => prev.map((a, i) => i === index ? {
+      ...a,
+      isIncorrectReported: !a.isIncorrectReported,
+      groundTruth: !a.isIncorrectReported ? (a.groundTruth === a.category ? null : a.groundTruth) : null
+    } : a));
   };
 
   const setFeedback = (index: number, feedback: string) => {
@@ -318,8 +360,8 @@ export default function App() {
       analyzeThis: "Phân tích ảnh này",
       analyzing: "Đang phân tích...",
       analysisDone: "Đã phân tích xong",
-      uploadTitle: "Tải ảnh rác thải",
-      uploadDesc: "Nhấn để chọn một hoặc nhiều ảnh, hoặc dùng camera để chụp.",
+      uploadTitle: "Nhấn hoặc Kéo thả ảnh vào đây",
+      uploadDesc: "Kéo thả một hoặc nhiều ảnh, click để chọn hoặc sử dụng camera.",
       detailedResult: "Kết quả chi tiết",
       jumpPrompt: "Nhấn để nhảy tới trang",
       readyToAnalyze: "Sẵn sàng phân tích",
@@ -412,8 +454,8 @@ export default function App() {
       analyzeThis: "Analyze image",
       analyzing: "Analyzing...",
       analysisDone: "Analysis Complete",
-      uploadTitle: "Upload Waste Photo",
-      uploadDesc: "Click to select one or more images, or use camera.",
+      uploadTitle: "Click or Drag & Drop Photos Here",
+      uploadDesc: "Drag and drop one or more images, click to browse, or use the camera.",
       detailedResult: "Detailed Results",
       jumpPrompt: "Click to jump to page",
       readyToAnalyze: "Ready to Analyze",
@@ -544,7 +586,15 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto flex-1 grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-8 px-10 py-8 w-full">
         {/* Left Column: Image Pool & Selection */}
-        <div className="space-y-6 flex flex-col h-full">
+        <div 
+          className={cn(
+            "space-y-6 flex flex-col h-full transition-all duration-200",
+            isDragging && "opacity-80 scale-[0.99]"
+          )}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           <section className="space-y-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -750,8 +800,16 @@ export default function App() {
                   key="upload-prompt"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex flex-col items-center justify-center py-20 text-center space-y-4 border-2 border-dashed border-natural-border rounded-[24px] bg-white group hover:bg-natural-bg transition-colors cursor-pointer"
+                  className={cn(
+                    "flex flex-col items-center justify-center py-20 text-center space-y-4 border-2 border-dashed rounded-[24px] bg-white group transition-all duration-200 cursor-pointer",
+                    isDragging 
+                      ? "border-natural-primary bg-natural-primary/5 scale-[1.02] shadow-md" 
+                      : "border-natural-border hover:bg-natural-bg"
+                  )}
                   onClick={() => fileInputRef.current?.click()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
                 >
                   <div className="w-16 h-16 bg-natural-bg rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Upload className="w-8 h-8 text-natural-muted" />
@@ -1104,10 +1162,10 @@ export default function App() {
                           <div className="flex flex-wrap gap-2">
                             <Button 
                               size="sm"
-                              variant={activeItem.groundTruth === activeItem.category ? "default" : "outline"}
+                              variant={activeItem.groundTruth === activeItem.category && !activeItem.isIncorrectReported ? "default" : "outline"}
                               className={cn(
                                 "rounded-xl px-4 h-9 flex items-center gap-2 font-bold text-[11px] uppercase tracking-wider",
-                                activeItem.groundTruth === activeItem.category ? "bg-green-600 hover:bg-green-700 text-white" : "border-green-100 hover:bg-green-50 text-green-700"
+                                activeItem.groundTruth === activeItem.category && !activeItem.isIncorrectReported ? "bg-green-600 hover:bg-green-700 text-white" : "border-green-100 hover:bg-green-50 text-green-700"
                               )}
                               onClick={() => setGroundTruth(activeIndex, activeItem.category)}
                             >
@@ -1117,16 +1175,13 @@ export default function App() {
                             
                             <Button
                               size="sm"
-                              variant={activeItem.groundTruth && activeItem.groundTruth !== activeItem.category ? "default" : "outline"}
+                              variant={(activeItem.isIncorrectReported || (activeItem.groundTruth && activeItem.groundTruth !== activeItem.category)) ? "default" : "outline"}
                               className={cn(
                                 "rounded-xl px-4 h-9 flex items-center gap-2 font-bold text-[11px] uppercase tracking-wider transition-all",
-                                activeItem.groundTruth && activeItem.groundTruth !== activeItem.category ? "bg-red-500 hover:bg-red-600 text-white" : "border-red-100 hover:bg-red-50 text-red-600"
+                                (activeItem.isIncorrectReported || (activeItem.groundTruth && activeItem.groundTruth !== activeItem.category)) ? "bg-red-500 hover:bg-red-600 text-white" : "border-red-100 hover:bg-red-50 text-red-600"
                               )}
                               onClick={() => {
-                                // Just a toggle to show options or reset
-                                if (activeItem.groundTruth && activeItem.groundTruth !== activeItem.category) {
-                                  setGroundTruth(activeIndex, null);
-                                }
+                                toggleIncorrectReported(activeIndex);
                               }}
                             >
                               <AlertCircle className="w-3.5 h-3.5" />
@@ -1134,7 +1189,7 @@ export default function App() {
                             </Button>
                           </div>
 
-                          {(activeItem.groundTruth === null || activeItem.groundTruth !== activeItem.category) && (
+                          {(activeItem.groundTruth === null || activeItem.groundTruth !== activeItem.category || activeItem.isIncorrectReported) && (
                             <div className="space-y-4 bg-natural-bg/50 p-4 rounded-2xl border border-natural-border/50">
                               <div className="space-y-2">
                                 <p className="text-[10px] font-bold text-natural-muted uppercase tracking-wider">{t.groundTruthPrompt}</p>
@@ -1156,7 +1211,7 @@ export default function App() {
                                 </div>
                               </div>
 
-                              {activeItem.groundTruth && (
+                              {(activeItem.isIncorrectReported || (activeItem.groundTruth && activeItem.groundTruth !== activeItem.category)) && (
                                 <motion.div 
                                   initial={{ opacity: 0, y: 10 }}
                                   animate={{ opacity: 1, y: 0 }}
